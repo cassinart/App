@@ -15,7 +15,15 @@
             @apply shadow-sm transition duration-150 ease-in-out;
         }
         .modal {
-            @apply fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4;
+            display: none; /* Inicialmente oculto por padrão */
+            position: fixed;
+            inset: 0;
+            background-color: rgba(75, 85, 99, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            z-index: 50;
         }
         .modal-content {
             @apply bg-white rounded-xl shadow-lg p-6 w-full max-w-xl;
@@ -132,8 +140,9 @@
     </div>
 
     <!-- Modais (inicialmente ocultos) -->
-    <div id="paramsModal" class="modal hidden">
-        <div class="modal-content max-w-xl">
+    <!-- Modal de Parâmetros -->
+    <div id="paramsModal" class="modal">
+        <div class="modal-content max-w-xl bg-white p-6 rounded-xl shadow-lg">
             <h2 class="text-xl font-bold mb-4 text-blue-800">Parâmetros Globais</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <label class="flex flex-col">
@@ -176,13 +185,14 @@
         </div>
     </div>
     
-    <div id="acessoriosModal" class="modal hidden">
-        <div class="modal-content max-w-lg">
+    <!-- Modal de Acessórios -->
+    <div id="acessoriosModal" class="modal">
+        <div class="modal-content max-w-lg bg-white p-6 rounded-xl shadow-lg">
             <h2 class="text-xl font-bold mb-4 text-blue-800">Gerenciar Acessórios</h2>
             <div class="flex flex-col">
                 <div class="flex space-x-2 mb-4">
                     <input id="newAcessorioName" type="text" placeholder="Nome do acessório" class="flex-1 p-2 border rounded-md">
-                    <input id="newAcessorioValue" type="number" placeholder="Valor (R$)" class="w-24 p-2 border rounded-md">
+                    <input id="newAcessorioValue" type="number" placeholder="Valor (R$)" class="w-32 p-2 border rounded-md">
                     <button id="addAcessorioBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Cadastrar</button>
                 </div>
                 <ul id="acessoriosList" class="border rounded-md max-h-48 overflow-y-auto"></ul>
@@ -193,13 +203,14 @@
         </div>
     </div>
     
-    <div id="embalagensModal" class="modal hidden">
-        <div class="modal-content max-w-lg">
+    <!-- Modal de Embalagens -->
+    <div id="embalagensModal" class="modal">
+        <div class="modal-content max-w-lg bg-white p-6 rounded-xl shadow-lg">
             <h2 class="text-xl font-bold mb-4 text-blue-800">Gerenciar Embalagens</h2>
             <div class="flex flex-col">
                 <div class="flex space-x-2 mb-4">
                     <input id="newEmbalagemName" type="text" placeholder="Nome da embalagem" class="flex-1 p-2 border rounded-md">
-                    <input id="newEmbalagemValue" type="number" placeholder="Valor (R$)" class="w-24 p-2 border rounded-md">
+                    <input id="newEmbalagemValue" type="number" placeholder="Valor (R$)" class="w-32 p-2 border rounded-md">
                     <button id="addEmbalagemBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Cadastrar</button>
                 </div>
                 <ul id="embalagensList" class="border rounded-md max-h-48 overflow-y-auto"></ul>
@@ -210,7 +221,8 @@
         </div>
     </div>
     
-    <div id="editModal" class="modal hidden">
+    <!-- Modal de Edição de Produto -->
+    <div id="editModal" class="modal">
         <div class="modal-content max-w-lg">
             <h3 class="text-xl font-bold mb-4">Editar Produto</h3>
             <div id="editForm" class="grid grid-cols-2 gap-4"></div>
@@ -231,16 +243,9 @@
         import { getFirestore, collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Substitua as variáveis abaixo pela sua própria configuração do Firebase
-        const appId = "substitua_pelo_seu_app_id"; // O seu ID do aplicativo, por exemplo: 'precificacao-app-123'
-        const firebaseConfig = {
-            apiKey: "substitua_pela_sua_apiKey",
-            authDomain: "substitua_pelo_seu_authDomain",
-            projectId: "substitua_pelo_seu_projectId",
-            storageBucket: "substitua_pelo_seu_storageBucket",
-            messagingSenderId: "substitua_pelo_seu_messagingSenderId",
-            appId: "substitua_pelo_seu_appId_do_Firebase"
-        };
-        const initialAuthToken = ""; // Apenas para ambientes controlados como este
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let db, auth, userId;
         let produtos = [];
@@ -291,31 +296,52 @@
 
         // Inicialização do Firebase
         window.onload = async () => {
-            if (!firebaseConfig.apiKey) {
-                console.error("A configuração do Firebase não foi adicionada.");
-                // Opcional: mostrar uma mensagem de erro na UI
+            if (!Object.keys(firebaseConfig).length) {
+                console.error("A configuração do Firebase não foi fornecida. O aplicativo não funcionará corretamente.");
                 return;
             }
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
 
+            // Se a aplicação é carregada com um token de autenticação, use-o para login
+            if (initialAuthToken) {
+                try {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } catch (error) {
+                    console.error("Erro ao fazer login com token personalizado:", error);
+                    // Em caso de falha com o token, tentamos o login anônimo
+                    try {
+                        await signInAnonymously(auth);
+                    } catch (anonError) {
+                        console.error("Erro ao fazer login anônimo:", anonError);
+                    }
+                }
+            } else {
+                 try {
+                    await signInAnonymously(auth);
+                } catch (anonError) {
+                    console.error("Erro ao fazer login anônimo:", anonError);
+                }
+            }
+            
+            // Listener para o estado de autenticação. É aqui que garantimos que o userId está disponível.
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     userId = user.uid;
                     console.log("Usuário autenticado:", userId);
                     startRealtimeListeners();
                 } else {
-                    try {
-                        await signInAnonymously(auth);
-                    } catch (error) {
-                        console.error("Erro na autenticação:", error);
-                    }
+                    console.error("Não foi possível autenticar o usuário.");
                 }
             });
         };
 
         function startRealtimeListeners() {
+            if (!userId) {
+                console.error("ID de usuário não disponível. Não foi possível iniciar os listeners do Firestore.");
+                return;
+            }
             // Listener para produtos
             onSnapshot(collection(db, `/artifacts/${appId}/users/${userId}/produtos`), (snapshot) => {
                 produtos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -443,6 +469,11 @@
 
         // --- Funções de Lógica e Eventos ---
         adicionarProdutoBtn.addEventListener('click', async () => {
+            if (!userId) {
+                console.error("Usuário não autenticado. Ação abortada.");
+                return;
+            }
+
             const nomeProduto = nomeProdutoInput.value;
             const nomeCliente = nomeClienteInput.value;
             const horas = parseFloat(horasInput.value) || 0;
@@ -505,10 +536,18 @@
         });
 
         window.excluirProduto = async (id) => {
+            if (!userId) {
+                console.error("Usuário não autenticado. Ação abortada.");
+                return;
+            }
             await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/produtos`, id));
         };
 
         limparProdutosBtn.addEventListener('click', async () => {
+            if (!userId) {
+                console.error("Usuário não autenticado. Ação abortada.");
+                return;
+            }
             const querySnapshot = await getDocs(collection(db, `/artifacts/${appId}/users/${userId}/produtos`));
             const batch = writeBatch(db);
             querySnapshot.forEach(doc => batch.delete(doc.ref));
@@ -558,13 +597,22 @@
             });
         });
 
-        gerenciarAcessoriosBtn.addEventListener('click', () => acessoriosModal.classList.remove('hidden'));
-        fecharAcessoriosBtn.addEventListener('click', () => acessoriosModal.classList.add('hidden'));
-        gerenciarEmbalagensBtn.addEventListener('click', () => embalagensModal.classList.remove('hidden'));
-        fecharEmbalagensBtn.addEventListener('click', () => embalagensModal.classList.add('hidden'));
-        configuracoesBtn.addEventListener('click', () => paramsModal.classList.remove('hidden'));
-        cancelarParamsBtn.addEventListener('click', () => paramsModal.classList.add('hidden'));
+        // Event Listeners para mostrar os modais
+        gerenciarAcessoriosBtn.addEventListener('click', () => acessoriosModal.style.display = 'flex');
+        gerenciarEmbalagensBtn.addEventListener('click', () => embalagensModal.style.display = 'flex');
+        configuracoesBtn.addEventListener('click', () => paramsModal.style.display = 'flex');
+        
+        // Event Listeners para fechar os modais
+        cancelarParamsBtn.addEventListener('click', () => paramsModal.style.display = 'none');
+        fecharAcessoriosBtn.addEventListener('click', () => acessoriosModal.style.display = 'none');
+        fecharEmbalagensBtn.addEventListener('click', () => embalagensModal.style.display = 'none');
+        cancelarEdicaoBtn.addEventListener('click', () => editModal.style.display = 'none');
+        
         salvarParamsBtn.addEventListener('click', async () => {
+            if (!userId) {
+                console.error("Usuário não autenticado. Ação abortada.");
+                return;
+            }
             params.custoKg = parseFloat(document.getElementById('custoKg').value) || 0;
             params.potenciaW = parseFloat(document.getElementById('potenciaW').value) || 0;
             params.custoKwh = parseFloat(document.getElementById('custoKwh').value) || 0;
@@ -574,10 +622,14 @@
             params.vidaUtilHoras = parseFloat(document.getElementById('vidaUtilHoras').value) || 0;
             
             await setDoc(doc(db, `/artifacts/${appId}/users/${userId}/parametros`, 'global'), params);
-            paramsModal.classList.add('hidden');
+            paramsModal.style.display = 'none';
         });
         
         document.getElementById('addAcessorioBtn').addEventListener('click', async () => {
+            if (!userId) {
+                console.error("Usuário não autenticado. Ação abortada.");
+                return;
+            }
             const name = document.getElementById('newAcessorioName').value;
             const value = parseFloat(document.getElementById('newAcessorioValue').value) || 0;
             if (name) {
@@ -588,10 +640,18 @@
         });
 
         window.deleteAcessorio = async (id) => {
+            if (!userId) {
+                console.error("Usuário não autenticado. Ação abortada.");
+                return;
+            }
             await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/acessorios`, id));
         };
         
         document.getElementById('addEmbalagemBtn').addEventListener('click', async () => {
+            if (!userId) {
+                console.error("Usuário não autenticado. Ação abortada.");
+                return;
+            }
             const name = document.getElementById('newEmbalagemName').value;
             const value = parseFloat(document.getElementById('newEmbalagemValue').value) || 0;
             if (name) {
@@ -602,6 +662,10 @@
         });
         
         window.deleteEmbalagem = async (id) => {
+            if (!userId) {
+                console.error("Usuário não autenticado. Ação abortada.");
+                return;
+            }
             await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/embalagens`, id));
         };
         
@@ -617,11 +681,16 @@
                     <label class="flex flex-col"><span class="text-sm font-medium">Peso (g)</span><input type="number" id="editPeso" value="${currentEditingProduct.peso}" class="p-2 border rounded-md"></label>
                     <label class="flex flex-col"><span class="text-sm font-medium">Quantidade</span><input type="number" id="editQuantidade" value="${currentEditingProduct.quantidade}" class="p-2 border rounded-md"></label>
                 `;
-                editModal.classList.remove('hidden');
+                editModal.style.display = 'flex';
             }
         };
 
         salvarEdicaoBtn.addEventListener('click', async () => {
+            if (!userId) {
+                console.error("Usuário não autenticado. Ação abortada.");
+                return;
+            }
+
             if (!currentEditingProduct) return;
             const updatedData = {
                 nomeProduto: document.getElementById('editNomeProduto').value,
@@ -659,12 +728,7 @@
             };
 
             await updateDoc(doc(db, `/artifacts/${appId}/users/${userId}/produtos`, currentEditingProduct.id), produtoAtualizado);
-            editModal.classList.add('hidden');
-            currentEditingProduct = null;
-        });
-
-        cancelarEdicaoBtn.addEventListener('click', () => {
-            editModal.classList.add('hidden');
+            editModal.style.display = 'none';
             currentEditingProduct = null;
         });
         
