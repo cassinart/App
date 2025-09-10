@@ -295,7 +295,7 @@
         const salvarEdicaoBtn = document.getElementById('salvarEdicaoBtn');
 
         // Inicialização do Firebase
-        window.onload = async () => {
+        window.onload = () => {
             if (!Object.keys(firebaseConfig).length) {
                 console.error("A configuração do Firebase não foi fornecida. O aplicativo não funcionará corretamente.");
                 return;
@@ -304,27 +304,6 @@
             db = getFirestore(app);
             auth = getAuth(app);
 
-            // Se a aplicação é carregada com um token de autenticação, use-o para login
-            if (initialAuthToken) {
-                try {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } catch (error) {
-                    console.error("Erro ao fazer login com token personalizado:", error);
-                    // Em caso de falha com o token, tentamos o login anônimo
-                    try {
-                        await signInAnonymously(auth);
-                    } catch (anonError) {
-                        console.error("Erro ao fazer login anônimo:", anonError);
-                    }
-                }
-            } else {
-                 try {
-                    await signInAnonymously(auth);
-                } catch (anonError) {
-                    console.error("Erro ao fazer login anônimo:", anonError);
-                }
-            }
-            
             // Listener para o estado de autenticação. É aqui que garantimos que o userId está disponível.
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
@@ -332,7 +311,16 @@
                     console.log("Usuário autenticado:", userId);
                     startRealtimeListeners();
                 } else {
-                    console.error("Não foi possível autenticar o usuário.");
+                    console.log("Nenhum usuário autenticado. Tentando autenticação anônima...");
+                    try {
+                        if (initialAuthToken) {
+                             await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (error) {
+                        console.error("Erro na autenticação:", error);
+                    }
                 }
             });
         };
