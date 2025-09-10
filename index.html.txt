@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplicativo de Precificação</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+        input, select {
+            @apply shadow-sm transition duration-150 ease-in-out;
+        }
+        .modal {
+            @apply fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4;
+        }
+        .modal-content {
+            @apply bg-white rounded-xl shadow-lg p-6 w-full max-w-xl;
+        }
+    </style>
+    <!-- Inclui as bibliotecas Firebase, XLSX, jsPDF e html2canvas -->
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body class="p-6">
+
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-800">
+            App de Precificação
+        </h1>
+        <div class="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2">
+            <button id="gerenciarAcessoriosBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg shadow-md hover:bg-gray-300 transition-colors">
+                Gerenciar Acessórios
+            </button>
+            <button id="gerenciarEmbalagensBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg shadow-md hover:bg-gray-300 transition-colors">
+                Gerenciar Embalagens
+            </button>
+            <button id="configuracoesBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg shadow-md hover:bg-gray-300 transition-colors">
+                Configurações
+            </button>
+        </div>
+    </div>
+
+    <!-- Seção de Adicionar Produto -->
+    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4 text-blue-800">Adicionar Produto</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <label class="flex flex-col">
+                <span class="text-sm font-medium text-gray-600 mb-1">Nome do Produto</span>
+                <input id="nomeProduto" type="text" placeholder="Ex: Urso de pelúcia" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </label>
+            <label class="flex flex-col">
+                <span class="text-sm font-medium text-gray-600 mb-1">Nome do Cliente</span>
+                <input id="nomeCliente" type="text" placeholder="Ex: Maria da Silva" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </label>
+            <label class="flex flex-col">
+                <span class="text-sm font-medium text-gray-600 mb-1">Horas</span>
+                <input id="horas" type="number" value="0" min="0" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </label>
+            <label class="flex flex-col">
+                <span class="text-sm font-medium text-gray-600 mb-1">Minutos</span>
+                <input id="minutos" type="number" value="0" min="0" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </label>
+            <label class="flex flex-col">
+                <span class="text-sm font-medium text-gray-600 mb-1">Peso (g)</span>
+                <input id="peso" type="number" value="0" min="0" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </label>
+            <label class="flex flex-col">
+                <span class="text-sm font-medium text-gray-600 mb-1">Quantidade</span>
+                <input id="quantidade" type="number" value="1" min="1" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </label>
+            <div class="flex flex-col">
+                <span class="text-sm font-medium text-gray-600 mb-1">Acessórios (<span id="acessoriosTotal">0.00</span>)</span>
+                <select id="acessoriosSelect" multiple class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"></select>
+            </div>
+            <div class="flex flex-col">
+                <span class="text-sm font-medium text-gray-600 mb-1">Embalagem (<span id="embalagensTotal">0.00</span>)</span>
+                <select id="embalagensSelect" multiple class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"></select>
+            </div>
+        </div>
+        <button id="adicionarProdutoBtn" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors">
+            Calcular e Adicionar
+        </button>
+    </div>
+
+    <!-- Tabela de Produtos Precificados -->
+    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4 text-blue-800">Produtos Precificados</h2>
+        <div class="overflow-x-auto" id="tableWrapper">
+            <table id="produtosTable" class="min-w-full border-collapse border border-gray-300">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Nome do Produto</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Nome do Cliente</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Horas</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Minutos</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Peso (g)</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Qtd</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Acessórios (R$)</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Embalagem (R$)</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Amortização (R$)</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Custo Energia (R$)</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Custo Unitário (R$)</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">E-commerce (R$)</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Logista (R$)</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Direta (R$)</th>
+                        <th class="border border-gray-300 p-2 text-sm font-semibold text-gray-700 text-left">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="produtosTableBody"></tbody>
+            </table>
+        </div>
+        <div id="tableActions" class="mt-4 hidden flex flex-row space-x-4">
+            <button id="exportarExcelBtn" class="px-6 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors">
+                Exportar Excel
+            </button>
+            <button id="exportarPdfBtn" class="px-6 py-2 bg-red-600 text-white rounded-lg shadow-md hover:bg-red-700 transition-colors">
+                Exportar PDF
+            </button>
+            <button id="limparProdutosBtn" class="px-6 py-2 bg-gray-400 text-white rounded-lg shadow-md hover:bg-red-700 transition-colors">
+                Limpar Todos
+            </button>
+        </div>
+        <div id="noProductsMessage" class="mt-4 text-center text-gray-500">Nenhum produto cadastrado.</div>
+    </div>
+
+    <!-- Modais (inicialmente ocultos) -->
+    <div id="paramsModal" class="modal hidden">
+        <div class="modal-content max-w-xl">
+            <h2 class="text-xl font-bold mb-4 text-blue-800">Parâmetros Globais</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <label class="flex flex-col">
+                    <span class="text-sm font-medium text-gray-600 mb-1">Custo Filamento (R$/kg)</span>
+                    <input id="custoKg" type="number" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </label>
+                <label class="flex flex-col">
+                    <span class="text-sm font-medium text-gray-600 mb-1">Potência da Máquina (W)</span>
+                    <input id="potenciaW" type="number" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </label>
+                <label class="flex flex-col">
+                    <span class="text-sm font-medium text-gray-600 mb-1">Custo Energia (R$/kWh)</span>
+                    <input id="custoKwh" type="number" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </label>
+                <label class="flex flex-col">
+                    <span class="text-sm font-medium text-gray-600 mb-1">Falha de Produção (%)</span>
+                    <input id="falhaProducao" type="number" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </label>
+                <label class="flex flex-col">
+                    <span class="text-sm font-medium text-gray-600 mb-1">Custo Fixo (R$)</span>
+                    <input id="custoFixo" type="number" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </label>
+                <label class="flex flex-col">
+                    <span class="text-sm font-medium text-gray-600 mb-1">Valor Máquina (R$)</span>
+                    <input id="valorMaquina" type="number" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </label>
+                <label class="flex flex-col">
+                    <span class="text-sm font-medium text-gray-600 mb-1">Vida Útil (Horas)</span>
+                    <input id="vidaUtilHoras" type="number" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </label>
+            </div>
+            <div class="mt-6 flex justify-end space-x-4">
+                <button id="cancelarParamsBtn" class="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400 transition-colors">
+                    Cancelar
+                </button>
+                <button id="salvarParamsBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    Salvar Parâmetros
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="acessoriosModal" class="modal hidden">
+        <div class="modal-content max-w-lg">
+            <h2 class="text-xl font-bold mb-4 text-blue-800">Gerenciar Acessórios</h2>
+            <div class="flex flex-col">
+                <div class="flex space-x-2 mb-4">
+                    <input id="newAcessorioName" type="text" placeholder="Nome do acessório" class="flex-1 p-2 border rounded-md">
+                    <input id="newAcessorioValue" type="number" placeholder="Valor (R$)" class="w-24 p-2 border rounded-md">
+                    <button id="addAcessorioBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Cadastrar</button>
+                </div>
+                <ul id="acessoriosList" class="border rounded-md max-h-48 overflow-y-auto"></ul>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button id="fecharAcessoriosBtn" class="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400 transition-colors">Fechar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="embalagensModal" class="modal hidden">
+        <div class="modal-content max-w-lg">
+            <h2 class="text-xl font-bold mb-4 text-blue-800">Gerenciar Embalagens</h2>
+            <div class="flex flex-col">
+                <div class="flex space-x-2 mb-4">
+                    <input id="newEmbalagemName" type="text" placeholder="Nome da embalagem" class="flex-1 p-2 border rounded-md">
+                    <input id="newEmbalagemValue" type="number" placeholder="Valor (R$)" class="w-24 p-2 border rounded-md">
+                    <button id="addEmbalagemBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Cadastrar</button>
+                </div>
+                <ul id="embalagensList" class="border rounded-md max-h-48 overflow-y-auto"></ul>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button id="fecharEmbalagensBtn" class="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400 transition-colors">Fechar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="editModal" class="modal hidden">
+        <div class="modal-content max-w-lg">
+            <h3 class="text-xl font-bold mb-4">Editar Produto</h3>
+            <div id="editForm" class="grid grid-cols-2 gap-4"></div>
+            <div class="mt-6 flex justify-end space-x-4">
+                <button id="cancelarEdicaoBtn" class="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400 transition-colors">
+                    Cancelar
+                </button>
+                <button id="salvarEdicaoBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Substitua as variáveis abaixo pela sua própria configuração do Firebase
+        const appId = "substitua_pelo_seu_app_id"; // O seu ID do aplicativo, por exemplo: 'precificacao-app-123'
+        const firebaseConfig = {
+            apiKey: "substitua_pela_sua_apiKey",
+            authDomain: "substitua_pelo_seu_authDomain",
+            projectId: "substitua_pelo_seu_projectId",
+            storageBucket: "substitua_pelo_seu_storageBucket",
+            messagingSenderId: "substitua_pelo_seu_messagingSenderId",
+            appId: "substitua_pelo_seu_appId_do_Firebase"
+        };
+        const initialAuthToken = ""; // Apenas para ambientes controlados como este
+
+        let db, auth, userId;
+        let produtos = [];
+        let acessoriosList = [];
+        let embalagemList = [];
+        let params = {
+            custoKg: 95,
+            potenciaW: 175,
+            custoKwh: 0.95,
+            falhaProducao: 5,
+            custoFixo: 0.8,
+            valorMaquina: 5400,
+            vidaUtilHoras: 24000,
+        };
+        let currentEditingProduct = null;
+
+        // Referências aos elementos da UI
+        const nomeProdutoInput = document.getElementById('nomeProduto');
+        const nomeClienteInput = document.getElementById('nomeCliente');
+        const horasInput = document.getElementById('horas');
+        const minutosInput = document.getElementById('minutos');
+        const pesoInput = document.getElementById('peso');
+        const quantidadeInput = document.getElementById('quantidade');
+        const acessoriosSelect = document.getElementById('acessoriosSelect');
+        const embalagensSelect = document.getElementById('embalagensSelect');
+        const adicionarProdutoBtn = document.getElementById('adicionarProdutoBtn');
+        const produtosTableBody = document.getElementById('produtosTableBody');
+        const tableActions = document.getElementById('tableActions');
+        const noProductsMessage = document.getElementById('noProductsMessage');
+        const exportarExcelBtn = document.getElementById('exportarExcelBtn');
+        const exportarPdfBtn = document.getElementById('exportarPdfBtn');
+        const limparProdutosBtn = document.getElementById('limparProdutosBtn');
+
+        const gerenciarAcessoriosBtn = document.getElementById('gerenciarAcessoriosBtn');
+        const gerenciarEmbalagensBtn = document.getElementById('gerenciarEmbalagensBtn');
+        const configuracoesBtn = document.getElementById('configuracoesBtn');
+
+        const paramsModal = document.getElementById('paramsModal');
+        const salvarParamsBtn = document.getElementById('salvarParamsBtn');
+        const cancelarParamsBtn = document.getElementById('cancelarParamsBtn');
+        const acessoriosModal = document.getElementById('acessoriosModal');
+        const fecharAcessoriosBtn = document.getElementById('fecharAcessoriosBtn');
+        const embalagensModal = document.getElementById('embalagensModal');
+        const fecharEmbalagensBtn = document.getElementById('fecharEmbalagensBtn');
+        const editModal = document.getElementById('editModal');
+        const cancelarEdicaoBtn = document.getElementById('cancelarEdicaoBtn');
+        const salvarEdicaoBtn = document.getElementById('salvarEdicaoBtn');
+
+        // Inicialização do Firebase
+        window.onload = async () => {
+            if (!firebaseConfig.apiKey) {
+                console.error("A configuração do Firebase não foi adicionada.");
+                // Opcional: mostrar uma mensagem de erro na UI
+                return;
+            }
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    console.log("Usuário autenticado:", userId);
+                    startRealtimeListeners();
+                } else {
+                    try {
+                        await signInAnonymously(auth);
+                    } catch (error) {
+                        console.error("Erro na autenticação:", error);
+                    }
+                }
+            });
+        };
+
+        function startRealtimeListeners() {
+            // Listener para produtos
+            onSnapshot(collection(db, `/artifacts/${appId}/users/${userId}/produtos`), (snapshot) => {
+                produtos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderProdutos();
+            });
+
+            // Listener para parâmetros
+            onSnapshot(doc(db, `/artifacts/${appId}/users/${userId}/parametros`, 'global'), (docSnapshot) => {
+                if (docSnapshot.exists()) {
+                    params = docSnapshot.data();
+                } else {
+                    setDoc(doc(db, `/artifacts/${appId}/users/${userId}/parametros`, 'global'), params);
+                }
+                updateParamsModal();
+            });
+
+            // Listener para acessórios
+            onSnapshot(collection(db, `/artifacts/${appId}/users/${userId}/acessorios`), (snapshot) => {
+                acessoriosList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderAcessoriosSelect();
+                renderAcessoriosList();
+            });
+
+            // Listener para embalagens
+            onSnapshot(collection(db, `/artifacts/${appId}/users/${userId}/embalagens`), (snapshot) => {
+                embalagemList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderEmbalagensSelect();
+                renderEmbalagensList();
+            });
+        }
+        
+        // --- Funções de Renderização e Atualização da UI ---
+        function renderProdutos() {
+            produtosTableBody.innerHTML = '';
+            if (produtos.length > 0) {
+                produtos.forEach(p => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="border border-gray-300 p-2 text-sm">${p.nomeProduto}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.nomeCliente}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.horas}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.minutos}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.peso}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.quantidade}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.acessorios ? p.acessorios.toFixed(2) : '0.00'}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.embalagem ? p.embalagem.toFixed(2) : '0.00'}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.amortizacao.toFixed(2)}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.custoEnergia.toFixed(2)}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.custoUnitario.toFixed(2)}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.precoEcommerce.toFixed(2)}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.precoLogista.toFixed(2)}</td>
+                        <td class="border border-gray-300 p-2 text-sm">${p.precoDireta.toFixed(2)}</td>
+                        <td class="border border-gray-300 p-2 text-sm space-x-2 flex justify-center">
+                            <button onclick="iniciarEdicao('${p.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-md shadow-sm hover:bg-yellow-600 transition-colors">Editar</button>
+                            <button onclick="excluirProduto('${p.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-md shadow-sm hover:bg-red-600 transition-colors">Excluir</button>
+                        </td>
+                    `;
+                    produtosTableBody.appendChild(row);
+                });
+                tableActions.classList.remove('hidden');
+                noProductsMessage.classList.add('hidden');
+            } else {
+                tableActions.classList.add('hidden');
+                noProductsMessage.classList.remove('hidden');
+            }
+        }
+
+        function renderAcessoriosSelect() {
+            acessoriosSelect.innerHTML = '';
+            acessoriosList.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = `${item.name} - R$${item.value.toFixed(2)}`;
+                acessoriosSelect.appendChild(option);
+            });
+        }
+        
+        function renderEmbalagensSelect() {
+            embalagensSelect.innerHTML = '';
+            embalagemList.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = `${item.name} - R$${item.value.toFixed(2)}`;
+                embalagensSelect.appendChild(option);
+            });
+        }
+        
+        function renderAcessoriosList() {
+            const listEl = document.getElementById('acessoriosList');
+            listEl.innerHTML = '';
+            acessoriosList.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'flex justify-between items-center p-2 border-b last:border-b-0';
+                li.innerHTML = `
+                    <span>${item.name} - R$${item.value.toFixed(2)}</span>
+                    <button onclick="deleteAcessorio('${item.id}')" class="text-red-500 hover:text-red-700">&times;</button>
+                `;
+                listEl.appendChild(li);
+            });
+        }
+        
+        function renderEmbalagensList() {
+            const listEl = document.getElementById('embalagensList');
+            listEl.innerHTML = '';
+            embalagemList.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'flex justify-between items-center p-2 border-b last:border-b-0';
+                li.innerHTML = `
+                    <span>${item.name} - R$${item.value.toFixed(2)}</span>
+                    <button onclick="deleteEmbalagem('${item.id}')" class="text-red-500 hover:text-red-700">&times;</button>
+                `;
+                listEl.appendChild(li);
+            });
+        }
+        
+        function updateParamsModal() {
+            document.getElementById('custoKg').value = params.custoKg;
+            document.getElementById('potenciaW').value = params.potenciaW;
+            document.getElementById('custoKwh').value = params.custoKwh;
+            document.getElementById('falhaProducao').value = params.falhaProducao;
+            document.getElementById('custoFixo').value = params.custoFixo;
+            document.getElementById('valorMaquina').value = params.valorMaquina;
+            document.getElementById('vidaUtilHoras').value = params.vidaUtilHoras;
+        }
+
+        // --- Funções de Lógica e Eventos ---
+        adicionarProdutoBtn.addEventListener('click', async () => {
+            const nomeProduto = nomeProdutoInput.value;
+            const nomeCliente = nomeClienteInput.value;
+            const horas = parseFloat(horasInput.value) || 0;
+            const minutos = parseFloat(minutosInput.value) || 0;
+            const peso = parseFloat(pesoInput.value) || 0;
+            const quantidade = parseInt(quantidadeInput.value) || 1;
+
+            if (!nomeProduto || !nomeCliente) {
+                return;
+            }
+
+            const tempoTotalMin = horas * 60 + minutos;
+            const tempoHoras = tempoTotalMin / 60;
+            
+            const selectedAcessorios = Array.from(acessoriosSelect.selectedOptions).map(opt => acessoriosList.find(item => item.id === opt.value));
+            const selectedEmbalagens = Array.from(embalagensSelect.selectedOptions).map(opt => embalagemList.find(item => item.id === opt.value));
+            const totalAcessorios = selectedAcessorios.reduce((sum, item) => sum + item.value, 0);
+            const totalEmbalagem = selectedEmbalagens.reduce((sum, item) => sum + item.value, 0);
+
+            const amortizacao = (params.valorMaquina / params.vidaUtilHoras) * tempoHoras;
+            const custoFilamento = (peso / 1000) * params.custoKg;
+            const potenciaKw = params.potenciaW / 1000;
+            const custoEnergia = tempoHoras * potenciaKw * params.custoKwh;
+            let custoTotal = custoFilamento + custoEnergia + totalAcessorios + totalEmbalagem + params.custoFixo + amortizacao;
+            custoTotal *= 1 + params.falhaProducao / 100;
+            const custoUnitario = custoTotal / quantidade;
+            const precoEcommerce = custoUnitario / (1 - 0.7);
+            const precoLogista = custoUnitario / (1 - 0.4);
+            const precoDireta = custoUnitario / (1 - 0.5);
+
+            const novoProduto = {
+                nomeProduto,
+                nomeCliente,
+                horas,
+                minutos,
+                peso,
+                quantidade,
+                acessorios: totalAcessorios,
+                embalagem: totalEmbalagem,
+                amortizacao: amortizacao,
+                custoEnergia: custoEnergia,
+                custoUnitario: custoUnitario,
+                precoEcommerce: precoEcommerce,
+                precoLogista: precoLogista,
+                precoDireta: precoDireta,
+                dataCriacao: new Date().toISOString(),
+            };
+
+            await addDoc(collection(db, `/artifacts/${appId}/users/${userId}/produtos`), novoProduto);
+
+            // Limpar formulário
+            nomeProdutoInput.value = '';
+            nomeClienteInput.value = '';
+            horasInput.value = '0';
+            minutosInput.value = '0';
+            pesoInput.value = '0';
+            quantidadeInput.value = '1';
+            acessoriosSelect.selectedIndex = -1;
+            embalagensSelect.selectedIndex = -1;
+        });
+
+        window.excluirProduto = async (id) => {
+            await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/produtos`, id));
+        };
+
+        limparProdutosBtn.addEventListener('click', async () => {
+            const querySnapshot = await getDocs(collection(db, `/artifacts/${appId}/users/${userId}/produtos`));
+            const batch = writeBatch(db);
+            querySnapshot.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+        });
+
+        exportarExcelBtn.addEventListener('click', () => {
+            if (produtos.length === 0) {
+                console.log("Não há produtos para exportar.");
+                return;
+            }
+            const dataParaExportar = produtos.map(({ id, ...rest }) => rest);
+            const worksheet = XLSX.utils.json_to_sheet(dataParaExportar);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Produtos");
+            XLSX.writeFile(workbook, "produtos_precificados.xlsx");
+        });
+
+        exportarPdfBtn.addEventListener('click', () => {
+            if (produtos.length === 0) {
+                console.log("Não há produtos para exportar.");
+                return;
+            }
+
+            const input = document.getElementById('produtosTable');
+            const { jsPDF } = window.jspdf;
+
+            html2canvas(input, { scale: 1 }).then(canvas => {
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const imgWidth = 210;
+                const pageHeight = 297;
+                const imgHeight = canvas.height * imgWidth / canvas.width;
+                let heightLeft = imgHeight;
+                let position = 0;
+
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+
+                while (heightLeft >= 0) {
+                    position = heightLeft - imgHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+                }
+                pdf.save("produtos_precificados.pdf");
+            });
+        });
+
+        gerenciarAcessoriosBtn.addEventListener('click', () => acessoriosModal.classList.remove('hidden'));
+        fecharAcessoriosBtn.addEventListener('click', () => acessoriosModal.classList.add('hidden'));
+        gerenciarEmbalagensBtn.addEventListener('click', () => embalagensModal.classList.remove('hidden'));
+        fecharEmbalagensBtn.addEventListener('click', () => embalagensModal.classList.add('hidden'));
+        configuracoesBtn.addEventListener('click', () => paramsModal.classList.remove('hidden'));
+        cancelarParamsBtn.addEventListener('click', () => paramsModal.classList.add('hidden'));
+        salvarParamsBtn.addEventListener('click', async () => {
+            params.custoKg = parseFloat(document.getElementById('custoKg').value) || 0;
+            params.potenciaW = parseFloat(document.getElementById('potenciaW').value) || 0;
+            params.custoKwh = parseFloat(document.getElementById('custoKwh').value) || 0;
+            params.falhaProducao = parseFloat(document.getElementById('falhaProducao').value) || 0;
+            params.custoFixo = parseFloat(document.getElementById('custoFixo').value) || 0;
+            params.valorMaquina = parseFloat(document.getElementById('valorMaquina').value) || 0;
+            params.vidaUtilHoras = parseFloat(document.getElementById('vidaUtilHoras').value) || 0;
+            
+            await setDoc(doc(db, `/artifacts/${appId}/users/${userId}/parametros`, 'global'), params);
+            paramsModal.classList.add('hidden');
+        });
+        
+        document.getElementById('addAcessorioBtn').addEventListener('click', async () => {
+            const name = document.getElementById('newAcessorioName').value;
+            const value = parseFloat(document.getElementById('newAcessorioValue').value) || 0;
+            if (name) {
+                await addDoc(collection(db, `/artifacts/${appId}/users/${userId}/acessorios`), { name, value });
+                document.getElementById('newAcessorioName').value = '';
+                document.getElementById('newAcessorioValue').value = '0';
+            }
+        });
+
+        window.deleteAcessorio = async (id) => {
+            await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/acessorios`, id));
+        };
+        
+        document.getElementById('addEmbalagemBtn').addEventListener('click', async () => {
+            const name = document.getElementById('newEmbalagemName').value;
+            const value = parseFloat(document.getElementById('newEmbalagemValue').value) || 0;
+            if (name) {
+                await addDoc(collection(db, `/artifacts/${appId}/users/${userId}/embalagens`), { name, value });
+                document.getElementById('newEmbalagemName').value = '';
+                document.getElementById('newEmbalagemValue').value = '0';
+            }
+        });
+        
+        window.deleteEmbalagem = async (id) => {
+            await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/embalagens`, id));
+        };
+        
+        window.iniciarEdicao = (id) => {
+            currentEditingProduct = produtos.find(p => p.id === id);
+            if (currentEditingProduct) {
+                const editForm = document.getElementById('editForm');
+                editForm.innerHTML = `
+                    <label class="flex flex-col"><span class="text-sm font-medium">Nome do Produto</span><input type="text" id="editNomeProduto" value="${currentEditingProduct.nomeProduto}" class="p-2 border rounded-md"></label>
+                    <label class="flex flex-col"><span class="text-sm font-medium">Nome do Cliente</span><input type="text" id="editNomeCliente" value="${currentEditingProduct.nomeCliente}" class="p-2 border rounded-md"></label>
+                    <label class="flex flex-col"><span class="text-sm font-medium">Horas</span><input type="number" id="editHoras" value="${currentEditingProduct.horas}" class="p-2 border rounded-md"></label>
+                    <label class="flex flex-col"><span class="text-sm font-medium">Minutos</span><input type="number" id="editMinutos" value="${currentEditingProduct.minutos}" class="p-2 border rounded-md"></label>
+                    <label class="flex flex-col"><span class="text-sm font-medium">Peso (g)</span><input type="number" id="editPeso" value="${currentEditingProduct.peso}" class="p-2 border rounded-md"></label>
+                    <label class="flex flex-col"><span class="text-sm font-medium">Quantidade</span><input type="number" id="editQuantidade" value="${currentEditingProduct.quantidade}" class="p-2 border rounded-md"></label>
+                `;
+                editModal.classList.remove('hidden');
+            }
+        };
+
+        salvarEdicaoBtn.addEventListener('click', async () => {
+            if (!currentEditingProduct) return;
+            const updatedData = {
+                nomeProduto: document.getElementById('editNomeProduto').value,
+                nomeCliente: document.getElementById('editNomeCliente').value,
+                horas: parseFloat(document.getElementById('editHoras').value) || 0,
+                minutos: parseFloat(document.getElementById('editMinutos').value) || 0,
+                peso: parseFloat(document.getElementById('editPeso').value) || 0,
+                quantidade: parseInt(document.getElementById('editQuantidade').value) || 1,
+            };
+
+            const tempoTotalMin = updatedData.horas * 60 + updatedData.minutos;
+            const tempoHoras = tempoTotalMin / 60;
+            const totalAcessorios = currentEditingProduct.acessorios;
+            const totalEmbalagem = currentEditingProduct.embalagem;
+
+            const amortizacao = (params.valorMaquina / params.vidaUtilHoras) * tempoHoras;
+            const custoFilamento = (updatedData.peso / 1000) * params.custoKg;
+            const potenciaKw = params.potenciaW / 1000;
+            const custoEnergia = tempoHoras * potenciaKw * params.custoKwh;
+            let custoTotal = custoFilamento + custoEnergia + totalAcessorios + totalEmbalagem + params.custoFixo + amortizacao;
+            custoTotal *= 1 + params.falhaProducao / 100;
+            const custoUnitario = custoTotal / updatedData.quantidade;
+            const precoEcommerce = custoUnitario / (1 - 0.7);
+            const precoLogista = custoUnitario / (1 - 0.4);
+            const precoDireta = custoUnitario / (1 - 0.5);
+
+            const produtoAtualizado = {
+                ...updatedData,
+                amortizacao: amortizacao,
+                custoEnergia: custoEnergia,
+                custoUnitario: custoUnitario,
+                precoEcommerce: precoEcommerce,
+                precoLogista: precoLogista,
+                precoDireta: precoDireta,
+            };
+
+            await updateDoc(doc(db, `/artifacts/${appId}/users/${userId}/produtos`, currentEditingProduct.id), produtoAtualizado);
+            editModal.classList.add('hidden');
+            currentEditingProduct = null;
+        });
+
+        cancelarEdicaoBtn.addEventListener('click', () => {
+            editModal.classList.add('hidden');
+            currentEditingProduct = null;
+        });
+        
+        document.getElementById('acessoriosSelect').addEventListener('change', () => {
+            const total = Array.from(acessoriosSelect.selectedOptions).reduce((sum, opt) => {
+                const item = acessoriosList.find(i => i.id === opt.value);
+                return sum + (item ? item.value : 0);
+            }, 0);
+            document.getElementById('acessoriosTotal').textContent = total.toFixed(2);
+        });
+
+        document.getElementById('embalagensSelect').addEventListener('change', () => {
+            const total = Array.from(embalagensSelect.selectedOptions).reduce((sum, opt) => {
+                const item = embalagemList.find(i => i.id === opt.value);
+                return sum + (item ? item.value : 0);
+            }, 0);
+            document.getElementById('embalagensTotal').textContent = total.toFixed(2);
+        });
+    </script>
+</body>
+</html>
